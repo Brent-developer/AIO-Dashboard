@@ -1,40 +1,65 @@
 # Universal Biometric Integration Platform
 
-FastAPI middleware that dynamically loads ZKTeco, Suprema, Hikvision, and OSDP drivers behind one normalized API.
+FastAPI middleware and Vue/Vuetify console for ZKTeco, Suprema, Hikvision, and OSDP devices.
 
-## Run locally
-
-### Ubuntu VM
+## Ubuntu deployment
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip redis-server
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+git clone https://github.com/Brent-developer/AIO-Dashboard.git
+cd AIO-Dashboard
 cp .env.example .env
-uvicorn main:app --host 0.0.0.0 --port 8000
+chmod 600 .env
+nano .env
+docker compose up --build -d
+docker compose ps
+curl http://127.0.0.1:8080/health/ready
 ```
 
-In another shell, start the worker when background synchronization is needed:
+Open `http://<VM-IP>:8080`. Keep PostgreSQL and Redis internal; only expose port 8080 through the VM firewall or reverse proxy.
+
+Useful commands:
+
+```bash
+docker compose logs -f api
+docker compose logs -f worker
+docker compose down
+```
+
+OpenAPI is available at `http://<VM-IP>:8080/docs`.
+
+## Local development
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn main:app --reload
+```
+
+In another shell:
 
 ```bash
 source .venv/bin/activate
 celery -A tasks.celery_app.celery_app worker --loglevel=info
 ```
 
-The API is then available at `http://<VM-IP>:8000`; keep port 8000 restricted with UFW or a reverse proxy.
+The dashboard can be run separately with Node.js 22+:
 
-### Windows / macOS
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-1. Create and activate a Python 3.11+ virtual environment.
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Copy `.env.example` values into your environment. The default database is local SQLite if `DATABASE_URL` is omitted.
-4. Start Redis (and PostgreSQL when configured): `docker compose up -d`.
-5. Start the API: `uvicorn main:app --reload`.
-6. Start a worker: `celery -A tasks.celery_app.celery_app worker --loglevel=info`.
+## Security
 
-The API documentation is at `/docs`. Development credentials default to `admin` / `admin`; always override them in a deployed environment.
+Replace every placeholder secret before deployment. Use HTTPS at a reverse proxy, restrict device-network access, and never publish PostgreSQL or Redis ports. Back up the database and encryption key separately.
 
-Device passwords and biometric templates are encrypted before storage. Manufacturer drivers are discovered dynamically by `core.plugin_loader`, so core services never import a concrete driver.
+## Device workflow
+
+1. Create a device through the authenticated API.
+2. Connect over the vendor protocol.
+3. Clone the live device profile into the sandbox.
+4. Run controlled latency, offline, malformed-response, or healthy scenarios.
+5. Run synchronization only after validating the device driver and credentials.
